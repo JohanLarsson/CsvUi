@@ -10,13 +10,12 @@ using System.Runtime.CompilerServices;
 public class CsvView : IBindingList, INotifyPropertyChanged
 {
     private readonly RowView[] rowViews;
-    private ColumnDescriptor labelColumn;
+    private readonly PropertyDescriptorCollection pdc;
 
     public CsvView(ImmutableArray<ImmutableArray<string>> rows)
     {
         var descriptors = CreateDescriptors(rows[0]);
         this.Columns = new ReadOnlyObservableCollection<ColumnDescriptor>(new ObservableCollection<ColumnDescriptor>(descriptors));
-        this.labelColumn = this.Columns[^1];
 
         var propertyDescriptorCollection = new PropertyDescriptorCollection(descriptors);
         this.rowViews = rows[1..].Select((x, i) => new RowView(x, propertyDescriptorCollection, i + 1)).ToArray();
@@ -67,35 +66,10 @@ public class CsvView : IBindingList, INotifyPropertyChanged
 
     public object SyncRoot => throw new NotSupportedException();
 
-    public ColumnDescriptor LabelColumn
-    {
-        get => this.labelColumn;
-        set
-        {
-            if (value == this.labelColumn)
-            {
-                return;
-            }
-
-            this.labelColumn = value;
-            this.OnPropertyChanged();
-        }
-    }
-
     public object? this[int index]
     {
         get => this.rowViews[index];
         set => throw new NotSupportedException();
-    }
-
-    public ColumnDescriptor FeatureColumn(int index)
-    {
-        if (index < this.labelColumn.Index)
-        {
-            return this.Columns[index];
-        }
-
-        return this.Columns[index + 1];
     }
 
     public int Add(object? value) => throw new NotSupportedException();
