@@ -7,18 +7,21 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-public class CsvView : IBindingList, INotifyPropertyChanged
+public class CsvView : IBindingList, ITypedList, INotifyPropertyChanged
 {
     private readonly RowView[] rowViews;
     private readonly PropertyDescriptorCollection pdc;
+
+    private ListSortDirection sortDirection;
+    private PropertyDescriptor? sortProperty;
 
     public CsvView(ImmutableArray<ImmutableArray<string>> rows)
     {
         var descriptors = CreateDescriptors(rows[0]);
         this.Columns = new ReadOnlyObservableCollection<ColumnDescriptor>(new ObservableCollection<ColumnDescriptor>(descriptors));
 
-        var propertyDescriptorCollection = new PropertyDescriptorCollection(descriptors);
-        this.rowViews = rows[1..].Select((x, i) => new RowView(x, propertyDescriptorCollection, i + 1)).ToArray();
+        this.pdc = new PropertyDescriptorCollection(descriptors);
+        this.rowViews = rows[1..].Select((x, i) => new RowView(x, this.pdc, i + 1)).ToArray();
 
         static ColumnDescriptor[] CreateDescriptors(ImmutableArray<string> headers)
         {
@@ -44,17 +47,44 @@ public class CsvView : IBindingList, INotifyPropertyChanged
 
     public bool AllowRemove => false;
 
-    public bool IsSorted => false;
+    public bool IsSorted => this.sortProperty is not null;
 
-    public ListSortDirection SortDirection => throw new NotSupportedException();
+    public ListSortDirection SortDirection
+    {
+        get => this.sortDirection;
+        private set
+        {
+            if (value == this.sortDirection)
+            {
+                return;
+            }
 
-    public PropertyDescriptor? SortProperty => throw new NotSupportedException();
+            this.sortDirection = value;
+            this.OnPropertyChanged();
+        }
+    }
+
+    public PropertyDescriptor? SortProperty
+    {
+        get => this.sortProperty;
+        private set
+        {
+            if (ReferenceEquals(value, this.sortProperty))
+            {
+                return;
+            }
+
+            this.sortProperty = value;
+            this.OnPropertyChanged();
+            this.OnPropertyChanged(nameof(this.IsSorted));
+        }
+    }
 
     public bool SupportsChangeNotification => false;
 
     public bool SupportsSearching => false;
 
-    public bool SupportsSorting => false;
+    public bool SupportsSorting => true;
 
     public bool IsFixedSize => true;
 
@@ -78,7 +108,19 @@ public class CsvView : IBindingList, INotifyPropertyChanged
 
     public object? AddNew() => throw new NotSupportedException();
 
-    public void ApplySort(PropertyDescriptor property, ListSortDirection direction) => throw new NotSupportedException();
+    public void ApplySort(PropertyDescriptor property, ListSortDirection direction)
+    {
+        this.SortProperty = property;
+        this.SortDirection = direction;
+        var index = ((ColumnDescriptor)property).Index;
+        var sign = direction == ListSortDirection.Descending ? 1 : -1;
+        Array.Sort(this.rowViews, (x, y) => Compare(x, y));
+        this.ListChanged?.Invoke(this, new ListChangedEventArgs(ListChangedType.Reset, -1));
+        int Compare(RowView x, RowView y)
+        {
+            return sign * string.Compare(x[index], y[index]);
+        }
+    }
 
     public void Clear() => throw new NotSupportedException();
 
@@ -102,7 +144,25 @@ public class CsvView : IBindingList, INotifyPropertyChanged
 
     public void RemoveIndex(PropertyDescriptor property) => throw new NotSupportedException();
 
-    public void RemoveSort() => throw new NotSupportedException();
+    public void RemoveSort()
+    {
+        this.SortProperty = null;
+        this.SortDirection = default;
+        Array.Sort(this.rowViews, (x, y) => x.RowNumber.CompareTo(y.RowNumber));
+        this.ListChanged?.Invoke(this, new ListChangedEventArgs(ListChangedType.Reset, -1));
+    }
+
+    public PropertyDescriptorCollection GetItemProperties(PropertyDescriptor[]? listAccessors)
+    {
+        if (listAccessors is null)
+        {
+            return this.pdc;
+        }
+
+        throw new NotSupportedException();
+    }
+
+    public string GetListName(PropertyDescriptor[]? listAccessors) => throw new NotSupportedException();
 
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
